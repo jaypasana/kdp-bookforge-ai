@@ -82,7 +82,7 @@ import {
   assembleChapterContent,
 } from "@/lib/services/chapter-service";
 import { startJob, completeJob, failJob, setProjectStatus } from "@/lib/services/generation-job-service";
-import { recalculateTotalWords } from "@/lib/services/book-project-service";
+import { recalculateTotalWords, recalculateActualCost } from "@/lib/services/book-project-service";
 
 const OUTLINE_APPROVAL_TIMEOUT = "7d";
 
@@ -459,6 +459,7 @@ export const generateBookProject = inngest.createFunction(
 
       await step.run(`chapter-${chapterNumber}-progress`, async () => {
         await recalculateTotalWords(bookProjectId);
+        await recalculateActualCost(bookProjectId);
         const progress = 25 + Math.round((chapterNumber / totalChapters) * 45);
         await setProjectStatus(bookProjectId, "GENERATING_CHAPTERS", { progress });
       });
@@ -674,9 +675,10 @@ export const generateBookProject = inngest.createFunction(
     // Done — ready for human review. DOCX compilation happens separately
     // (see the DOCX export phase) once the manuscript is approved.
     // -----------------------------------------------------------------
-    await step.run("set-status-ready-for-review", () =>
-      setProjectStatus(bookProjectId, "READY_FOR_REVIEW", { progress: 100 })
-    );
+    await step.run("finalize-cost-and-status", async () => {
+      await recalculateActualCost(bookProjectId);
+      await setProjectStatus(bookProjectId, "READY_FOR_REVIEW", { progress: 100 });
+    });
 
     return { status: "ready_for_review", bookProjectId };
   }

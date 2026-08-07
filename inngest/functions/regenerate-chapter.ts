@@ -35,7 +35,7 @@ import {
   assembleChapterContent,
 } from "@/lib/services/chapter-service";
 import { startJob, completeJob, failJob } from "@/lib/services/generation-job-service";
-import { recalculateTotalWords } from "@/lib/services/book-project-service";
+import { recalculateTotalWords, recalculateActualCost } from "@/lib/services/book-project-service";
 import type { ChapterPlan } from "@/lib/prompts/outline-generator";
 
 /**
@@ -199,7 +199,10 @@ export const regenerateChapter = inngest.createFunction(
       }
     });
 
-    await step.run("recalculate-words", () => recalculateTotalWords(bookProjectId));
+    await step.run("recalculate-words", async () => {
+      await recalculateTotalWords(bookProjectId);
+      await recalculateActualCost(bookProjectId);
+    });
 
     return { status: "chapter_regenerated", chapterNumber };
   }
