@@ -93,3 +93,24 @@ export async function resetPassword(token: string, newPassword: string) {
 
   await logAudit({ userId: resetToken.userId, action: "user.password_reset_completed" });
 }
+
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (!user.passwordHash) {
+    throw new AuthServiceError("This account has no password set.");
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) {
+    throw new AuthServiceError("Current password is incorrect.");
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+  await logAudit({ userId, action: "user.password_changed" });
+}

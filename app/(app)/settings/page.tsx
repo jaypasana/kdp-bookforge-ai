@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ChangePasswordForm } from "@/components/settings/change-password-form";
 
 export default function SettingsPage() {
   return (
@@ -10,6 +11,16 @@ export default function SettingsPage() {
           the admin build phase.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Change password</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ChangePasswordForm />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>OpenAI configuration</CardTitle>
