@@ -1,0 +1,506 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth (NextAuth / Auth.js credentials + Prisma adapter)
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  image         String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  authorProfiles AuthorProfile[]
+  bookProjects   BookProject[]
+  apiUsage       ApiUsage[]
+  passwordResets PasswordResetToken[]
+  auditLogs      AuditLog[]
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expires   DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Author profile
+// ---------------------------------------------------------------------------
+
+model AuthorProfile {
+  id               String   @id @default(cuid())
+  userId           String
+  authorName       String
+  penName          String?
+  shortBio         String   @db.Text
+  longBio          String   @db.Text
+  website          String?
+  email            String?
+  socialLinks      Json?
+  existingBooks    Json?
+  authorTagline    String?
+  publisherName    String?
+  copyrightHolder  String?
+  defaultCTA       String?  @db.Text
+  bonusResourceUrl String?
+  isDefault        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookProjects BookProject[]
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Book project + pipeline status
+// ---------------------------------------------------------------------------
+
+enum BookProjectStatus {
+  SETUP
+  PLANNING
+  OUTLINE_GENERATION
+  AWAITING_OUTLINE_APPROVAL
+  GENERATING_CHAPTERS
+  QUALITY_REVIEW
+  GENERATING_KDP_PACKAGE
+  COMPILING_DOCX
+  READY_FOR_REVIEW
+  APPROVED
+  FAILED
+  CANCELLED
+  ARCHIVED
+}
+
+model BookProject {
+  id                    String            @id @default(cuid())
+  userId                String
+  authorProfileId       String?
+  title                 String
+  subtitle              String?
+  slug                  String            @unique
+  niche                 String?
+  targetAudience        String?
+  bookType              String?
+  language              String            @default("English")
+  tone                  String?
+  pointOfView           String?
+  targetWordCount       Int               @default(50000)
+  chapterCount          Int               @default(12)
+  wordsPerChapter       Int               @default(4000)
+  readingLevel          String?
+  includeCaseStudies    Boolean           @default(true)
+  includeExercises      Boolean           @default(true)
+  includeWorksheets     Boolean           @default(false)
+  includeReflection     Boolean           @default(true)
+  includeChecklists     Boolean           @default(true)
+  includeFAQs           Boolean           @default(true)
+  includeGlossary       Boolean           @default(false)
+  includeBonusResources Boolean           @default(true)
+  includeCitations      Boolean           @default(false)
+  includeKdpPackage     Boolean           @default(true)
+  status                BookProjectStatus @default(SETUP)
+  progress              Int               @default(0)
+  totalWords            Int               @default(0)
+  estimatedCost         Float?
+  actualCost            Float             @default(0)
+  fullAutopilot         Boolean           @default(false)
+  researchMode          Boolean           @default(false)
+  frontMatter           Json?
+  backMatter            Json?
+  errorMessage          String?           @db.Text
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  completedAt           DateTime?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authorProfile AuthorProfile? @relation(fields: [authorProfileId], references: [id])
+
+  discoveries    BookDiscovery[]
+  outlines       Outline[]
+  chapters       Chapter[]
+  bookBible      BookBible?
+  kdpPackage     KdpPackage?
+  qualityReviews QualityReview[]
+  jobs           GenerationJob[]
+  apiUsage       ApiUsage[]
+  exports        Export[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model BookDiscovery {
+  id             String   @id @default(cuid())
+  bookProjectId  String
+  structuredData Json
+  promptVersion  String
+  model          String
+  createdAt      DateTime @default(now())
+
+  bookProject BookProject @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+
+  @@index([bookProjectId])
+}
+
+enum OutlineStatus {
+  DRAFT
+  AWAITING_APPROVAL
+  APPROVED
+  SUPERSEDED
+}
+
+model Outline {
+  id             String        @id @default(cuid())
+  bookProjectId  String
+  version        Int           @default(1)
+  status         OutlineStatus @default(DRAFT)
+  structuredData Json
+  approvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+
+  bookProject BookProject @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+
+  @@index([bookProjectId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Chapters
+// ---------------------------------------------------------------------------
+
+enum ChapterStatus {
+  PENDING
+  BRIEF_READY
+  DRAFTING
+  DRAFT_COMPLETE
+  REVIEWING
+  REVISING
+  APPROVED
+  FAILED
+}
+
+model Chapter {
+  id               String        @id @default(cuid())
+  bookProjectId    String
+  chapterNumber    Int
+  title            String
+  summary          String?       @db.Text
+  brief            Json?
+  targetWordCount  Int
+  actualWordCount  Int           @default(0)
+  status           ChapterStatus @default(PENDING)
+  locked           Boolean       @default(false)
+  score            Int?
+  revisionAttempts Int           @default(0)
+  errorMessage     String?       @db.Text
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  bookProject    BookProject      @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+  sections       ChapterSection[]
+  qualityReviews QualityReview[]
+
+  @@unique([bookProjectId, chapterNumber])
+  @@index([bookProjectId])
+  @@index([chapterNumber])
+  @@index([status])
+}
+
+enum SectionSourceType {
+  AI_GENERATED
+  USER_EDITED
+  AI_REVISED
+  APPROVED
+}
+
+model ChapterSection {
+  id           String            @id @default(cuid())
+  chapterId    String
+  sectionOrder Int
+  heading      String?
+  content      String            @db.Text
+  sourceType   SectionSourceType @default(AI_GENERATED)
+  locked       Boolean           @default(false)
+  version      Int               @default(1)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@index([chapterId])
+}
+
+model BookBible {
+  id             String   @id @default(cuid())
+  bookProjectId  String   @unique
+  structuredData Json
+  updatedAt      DateTime @updatedAt
+
+  bookProject BookProject @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// KDP marketing package
+// ---------------------------------------------------------------------------
+
+model KdpPackage {
+  id            String   @id @default(cuid())
+  bookProjectId String   @unique
+  positioning   Json?
+  titles        Json?
+  subtitles     Json?
+  description   Json?
+  keywords      Json?
+  categories    Json?
+  pricing       Json?
+  launchPlan    Json?
+  marketingPlan Json?
+  emailSequence Json?
+  socialContent Json?
+  aPlusContent  Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bookProject BookProject @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Quality assurance
+// ---------------------------------------------------------------------------
+
+enum QualityReviewType {
+  CHAPTER
+  ORIGINALITY
+  FULL_MANUSCRIPT
+}
+
+model QualityReview {
+  id              String            @id @default(cuid())
+  bookProjectId   String
+  chapterId       String?
+  reviewType      QualityReviewType
+  score           Int?
+  issues          Json?
+  recommendations Json?
+  resolved        Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+
+  bookProject BookProject @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+  chapter     Chapter?    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@index([bookProjectId])
+  @@index([chapterId])
+}
+
+// ---------------------------------------------------------------------------
+// Jobs
+// ---------------------------------------------------------------------------
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model GenerationJob {
+  id            String    @id @default(cuid())
+  bookProjectId String
+  jobType       String
+  status        JobStatus @default(QUEUED)
+  progress      Int       @default(0)
+  attempt       Int       @default(0)
+  errorMessage  String?   @db.Text
+  metadata      Json?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  bookProject BookProject @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+
+  @@index([bookProjectId])
+  @@index([jobType])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Cost / usage tracking
+// ---------------------------------------------------------------------------
+
+model ApiUsage {
+  id            String   @id @default(cuid())
+  userId        String
+  bookProjectId String?
+  taskType      String
+  model         String
+  inputTokens   Int
+  outputTokens  Int
+  estimatedCost Float
+  durationMs    Int?
+  retryCount    Int      @default(0)
+  responseId    String?
+  createdAt     DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookProject BookProject? @relation(fields: [bookProjectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([bookProjectId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Prompt library versioning
+// ---------------------------------------------------------------------------
+
+model PromptTemplate {
+  id                 String   @id @default(cuid())
+  name               String
+  version            Int      @default(1)
+  systemPrompt       String   @db.Text
+  userPromptTemplate String   @db.Text
+  outputSchema       Json?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  @@unique([name, version])
+  @@index([name])
+}
+
+// ---------------------------------------------------------------------------
+// Exports
+// ---------------------------------------------------------------------------
+
+enum ExportType {
+  MANUSCRIPT
+  KDP_PACKAGE
+  QUALITY_REPORT
+  PROJECT_ARCHIVE
+}
+
+model Export {
+  id            String     @id @default(cuid())
+  bookProjectId String
+  exportType    ExportType
+  fileName      String
+  filePath      String
+  fileSize      Int
+  createdAt     DateTime   @default(now())
+
+  bookProject BookProject @relation(fields: [bookProjectId], references: [id], onDelete: Cascade)
+
+  @@index([bookProjectId])
+}
+
+// ---------------------------------------------------------------------------
+// Revision history (generic, for editor undo/restore)
+// ---------------------------------------------------------------------------
+
+model Revision {
+  id         String            @id @default(cuid())
+  entityType String
+  entityId   String
+  version    Int
+  content    Json
+  source     SectionSourceType
+  createdAt  DateTime          @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Admin / platform configuration
+// ---------------------------------------------------------------------------
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
